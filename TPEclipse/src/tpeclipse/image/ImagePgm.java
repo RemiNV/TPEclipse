@@ -4,8 +4,12 @@ import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.IllegalFormatException;
@@ -17,9 +21,21 @@ public class ImagePgm {
 	
 	private int tailleX;
 	private int tailleY;
-	private BufferedImage image;
+	private int[][] matImage;
 	
 	private String nomFichier;
+	
+	public ImagePgm(int[][] matImage, String nomFichier) {
+		
+		if(matImage.length < 1)
+			throw new IllegalArgumentException("La matrice de l'image doit être non vide.");
+		
+		this.matImage = matImage;
+		tailleX = matImage.length;
+		tailleY = matImage[0].length;
+		
+		this.nomFichier = nomFichier;
+	}
 	
 	/**
 	 * Classe permettant de gérer les images (principalement au format PGM)
@@ -29,14 +45,12 @@ public class ImagePgm {
 	public ImagePgm(String path) throws IOException {
 		
 		nomFichier = path;
-		
-		FileInputStream fis = new FileInputStream(path);
-		
-		BufferedReader reader = new BufferedReader(new InputStreamReader(fis));
+
+		BufferedReader reader = new BufferedReader(new FileReader(path));
 		
 		String line;
 		int numLigne = 0;
-		int[] matImage = null;
+		int bytesRead = 0;
 		while((line = reader.readLine()) != null) {
 			
 			switch(numLigne) {
@@ -56,7 +70,7 @@ public class ImagePgm {
 				
 				tailleX = tryParseInt(strTaille[0], "La dimension X de l'image (3ème ligne) n'est pas un nombre");
 				tailleY = tryParseInt(strTaille[1], "La dimension Y de l'image (3ème ligne) n'est pas un nombre");
-				matImage = new int[tailleX*tailleY];
+				matImage = new int[tailleY][tailleX];
 				break;
 			case 3:
 				if(tryParseInt(line, "La 4ème ligne n'indique pas une échelle de niveaux de gris") != 255)
@@ -65,17 +79,18 @@ public class ImagePgm {
 				
 			default:
 				// Données de l'image
-				int y = numLigne - 4;
 				
-				if(y > tailleY)
-					return; // On a fini la lecture en principe
-				
-				String[] lineSplit = line.split(" +", tailleX);
-				if(lineSplit.length != tailleX)
-					throw new IllegalArgumentException("La ligne " + y + " est moins large que spécifié");
+				String[] lineSplit = line.trim().split(" +", tailleX);
 				
 				for(int i=0; i<lineSplit.length; i++) {
-					matImage[y*tailleX+i] = tryParseInt(lineSplit[i], "Erreur de lecture de l'entier : " + lineSplit[i] + " à la ligne " + numLigne); 
+					int y = bytesRead / tailleX;
+					int x = bytesRead % tailleX;
+					
+					if(y == tailleY-1 && x == tailleX-1)
+						return; // On a fini la lecture en principe
+					
+					matImage[y][x] = tryParseInt(lineSplit[i], "Erreur de lecture de l'entier : " + lineSplit[i] + " à la ligne " + numLigne);
+					bytesRead++;
 				}
 				
 				break;
@@ -85,12 +100,115 @@ public class ImagePgm {
 			numLigne++;
 		}
 		
-		// Création de l'image
-		image = new BufferedImage(tailleX, tailleY, BufferedImage.TYPE_BYTE_GRAY);
-		WritableRaster raster = (WritableRaster) image.getData();
-		raster.setPixels(0, 0, tailleX, tailleY, matImage);
-		
 		reader.close();
+	}
+	
+	/**
+	 * Création d'une image au format BufferedImage
+	 * @return BufferedImage créée
+	 */
+	public BufferedImage getImage() {
+		
+		BufferedImage res = new BufferedImage(tailleX, tailleY, BufferedImage.TYPE_BYTE_GRAY);
+		WritableRaster raster = (WritableRaster) res.getData();
+		
+		int[] arrayPixels = new int[tailleX*tailleY];
+		
+		for(int i=0; i<arrayPixels.length - tailleX; i++) {
+			arrayPixels[i] = matImage[i/tailleX][i%tailleX];
+		}
+		
+		raster.setPixels(0, 0, tailleX, tailleY, arrayPixels);
+		
+		return res;
+	}
+	
+	/**
+	 * Sauvegarde de l'image au format PGM
+	 * @param filename Chemin du fichier à sauvegarder
+	 * @throws IOException Erreur d'écriture
+	 */
+	public void sauvegarderImage(String filename) throws IOException {
+
+		BufferedWriter writer = new BufferedWriter(new FileWriter(filename));
+		
+		// Intitulé de fichier
+		writer.write("P2");
+		writer.newLine();
+		
+		// Commentaire
+		writer.write("# Fichier créé par TPEclipse");
+		writer.newLine();
+		
+		// Dimensions
+		writer.write(tailleX + "  " + tailleY);
+		writer.newLine();
+		
+		// Profondeur
+		writer.write("255");
+		writer.newLine();
+		
+		// Ecriture de la matrice
+		int countLine = 0;
+		for(int i=0; i<matImage.length; i++) {
+			boolean premier = true;
+			for(int j=0; j<matImage[i].length; j++) {
+				if(premier)
+					premier = false;
+				else {
+					writer.write("  ");
+					countLine += 2;
+				}
+				
+				String valImage = String.valueOf(matImage[i][j]);
+				writer.write(valImage);
+				countLine += valImage.length();
+				
+				if(countLine > 60) {
+					writer.newLine();
+					countLine = 0;
+				}
+					
+			}
+			
+			writer.newLine();
+			countLine = 0;
+			
+		}
+		
+		writer.close();
+	}
+	
+	/**
+	 * Calcule l'histogramme de l'image
+	 * @return Histogramme calculé
+	 */
+	public ImagePgm getHistogramme(int height) {
+		
+		// Array images
+		int[] valeursHistogramme = new int[256];
+		int max = 0;
+		
+		for(int i=0; i<matImage.length; i++) {
+			for(int j=0; j<matImage[i].length; j++) {
+				valeursHistogramme[matImage[i][j]]++;
+				
+				if(max < valeursHistogramme[matImage[i][j]])
+					max = valeursHistogramme[matImage[i][j]];
+			}
+		}
+		
+		int[][] dataHist = new int[height][256];
+		
+		// Création de l'image histogramme
+		for(int i=0; i<256; i++) {
+			for(int j=0, hMax=height - (int) (((float) valeursHistogramme[i]/max)*height); j<hMax; j++) {
+				dataHist[j][i] = 255;
+			}
+		}
+
+		
+		return new ImagePgm(dataHist, "Histogramme de " + nomFichier);
 	}
 	
 	private int tryParseInt(String strParse, String errorMessage) throws IllegalArgumentException {
@@ -105,9 +223,5 @@ public class ImagePgm {
 	@Override
 	public String toString() {
 		return "Image PGM : " + nomFichier + ", largeur : " + tailleX + ", hauteur : " + tailleY;
-	}
-	
-	public BufferedImage getImage() {
-		return image;
 	}
 }
