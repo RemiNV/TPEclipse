@@ -31,8 +31,8 @@ public class ImagePgm {
 			throw new IllegalArgumentException("La matrice de l'image doit être non vide.");
 		
 		this.matImage = matImage;
-		tailleX = matImage.length;
-		tailleY = matImage[0].length;
+		tailleY = matImage.length;
+		tailleX = matImage[0].length;
 		
 		this.nomFichier = nomFichier;
 	}
@@ -164,16 +164,17 @@ public class ImagePgm {
 				writer.write(valImage);
 				countLine += valImage.length();
 				
-				if(countLine > 60) {
+				if(countLine > 50) {
 					writer.newLine();
+					premier = true;
 					countLine = 0;
 				}
 					
 			}
-			
+			 
 			writer.newLine();
+			premier = true;
 			countLine = 0;
-			
 		}
 		
 		writer.close();
